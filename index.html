@@ -283,7 +283,7 @@ const store={
 // everything read from storage was typed by someone else: force it into the expected shape
 function norm(g){const d=g.data&&typeof g.data==='object'?g.data:{},str=(v,n)=>String(v??'').slice(0,n);
   return{id:String(g.id),class_name:str(g.class_name,12),group_name:str(g.group_name,40),updated_at:g.updated_at,data:{
-    dancers:Array.from({length:6},(_,i)=>str(d.dancers&&d.dancers[i],20)),
+    dancers:Array.from({length:6},(_,i)=>str(d.dancers&&d.dancers[i],30)),
     topic:str(d.topic,80),story:str(d.story,300),music:str(d.music,80),artist:str(d.artist,80),link:str(d.link,300),
     tools:Object.fromEntries(Object.entries(d.tools||{}).filter(([k])=>TOOL[k]).map(([k,v])=>[k,str(v,80)])),
     paths:Object.fromEntries(Object.entries(d.paths||{}).filter(([k,v])=>k>=0&&k<6&&Array.isArray(v)).map(([k,v])=>[k,v.slice(0,400).map(p=>[+p[0]||0,+p[1]||0])])),
@@ -299,12 +299,15 @@ store.importRoster=async rows=>{const cls=[...new Set(rows.map(r=>r.class_name))
   else rlocal.set(rlocal.get().filter(r=>!cls.includes(r.class_name)).concat(rows))};
 // one sheet: rows of cells. Accepts "Class | Name" (or First name + Last name) columns, or a sheet per class with only names.
 function parseRows(rows,sheet){const out=[];rows=rows.map(r=>r.map(v=>String(v??'').trim())).filter(r=>r.some(Boolean));if(!rows.length)return out;
-  const h=rows[0].map(v=>v.toLowerCase()),hasH=h.some(v=>/name|student|pupil|class|form/.test(v));
-  let ci=h.findIndex(v=>/class|form/.test(v)),fi=h.findIndex(v=>/first|given/.test(v)),li=h.findIndex(v=>/last|surname|family/.test(v)),
-    ni=fi>=0?fi:h.findIndex(v=>/name|student|pupil/.test(v)&&!/last|surname|family|class/.test(v));
-  if(!hasH){ci=rows[0].length>1?0:-1;ni=rows[0].length>1?1:0;li=-1}
+  const isH=v=>v.length<26&&/^(student|pupil|first|last|given|family|forename|surname|name)/i.test(v),hi=rows.slice(0,12).findIndex(r=>r.some(isH));
+  // class: a Class/Set column, else the title above the header ("8MS/Pe8 - Set List ..."), else the sheet name
+  const h=hi>=0?rows[hi].map(v=>v.toLowerCase()):[],title=(rows.slice(0,Math.max(hi,0)).flat().find(Boolean)||'').split(/\s+-\s+/)[0];
+  let ci=h.findIndex(v=>/^(class|set)\b/.test(v)),fi=h.findIndex(v=>/first|given|forename/.test(v)),li=h.findIndex(v=>/last|surname|family/.test(v)),
+    ni=fi>=0?fi:h.findIndex(v=>/name|student|pupil/.test(v)&&!/last|surname|family|class/.test(v)),body=rows.slice(hi+1);
+  if(hi<0){const w=Math.max(...rows.map(r=>r.length));ci=w>1?0:-1;ni=w>1?1:0;li=-1;body=rows}
   if(ni<0)return out;
-  for(const r of rows.slice(hasH?1:0)){const name=[r[ni],li>=0?r[li]:''].filter(Boolean).join(' ').replace(/\s+/g,' ').slice(0,20),cls=(ci>=0?r[ci]:sheet).toUpperCase().replace(/[",()]/g,'').trim().slice(0,12);
+  for(const r of body){const f=r[ni],sn=li>=0?r[li]:'';if(!f)continue; // footer rows ("Total: 26") have no forename
+    const name=(f+(sn?' '+sn[0]+'.':'')).replace(/\s+/g,' ').slice(0,30),cls=((ci>=0&&r[ci])||title||sheet).toUpperCase().replace(/[",()]/g,'').trim().slice(0,12);
     if(name&&cls)out.push({class_name:cls,name})}
   return out}
 const dedupe=rows=>[...new Map(rows.map(r=>[r.class_name+'|'+r.name.toLowerCase(),r])).values()];
@@ -323,7 +326,7 @@ async function flush(){clearTimeout(saveTimer);const g=dirtyG;if(!g)return;dirty
   catch(e){dirtyG=dirtyG||g;setStatus('Not saved. Check the wifi.','bad');saveTimer=setTimeout(flush,5000)}}
 async function load(){
   try{groups=(await store.list()).map(norm);if(statusEl.className==='bad')setStatus('')}catch(e){setStatus('Could not load. Check the wifi.','bad')}
-  try{roster=(await store.roster()).map(r=>({class_name:String(r.class_name).slice(0,12),name:String(r.name).slice(0,20)}))}catch(e){roster=[]}
+  try{roster=(await store.roster()).map(r=>({class_name:String(r.class_name).slice(0,12),name:String(r.name).slice(0,30)}))}catch(e){roster=[]}
   if(dirtyG)groups=groups.filter(x=>x.id!==dirtyG.id).concat(dirtyG)} // never drop unsaved work
 async function go(v){await flush();view=v;await load();render()}
 
@@ -375,7 +378,7 @@ function toolsPane(g){const n=g?Object.keys(g.data.tools).length:0;
 const field=(l,f,g,x='')=>`<label>${l}<input data-f="${f}" value="${esc(g.data[f])}" ${x}></label>`;
 const PANES=[
  g=>`<label>Group name<input data-top="group_name" maxlength="40" value="${esc(g.group_name)}"></label><h3 class="sec">Dancers (6 max)</h3>
-  ${g.data.dancers.map((n,i)=>`<label class="dancer"><span class="dot" style="--c:${COL[i]}">${i+1}</span><input data-d="${i}" maxlength="20" placeholder="First name" aria-label="Dancer ${i+1} first name" value="${esc(n)}"></label>`).join('')}
+  ${g.data.dancers.map((n,i)=>`<label class="dancer"><span class="dot" style="--c:${COL[i]}">${i+1}</span><input data-d="${i}" maxlength="30" placeholder="Name" aria-label="Dancer ${i+1} first name" value="${esc(n)}"></label>`).join('')}
   <button class="btn danger" data-del>Delete this group</button>`,
  g=>field('Topic of our dance','topic',g,'maxlength="80" placeholder="e.g. Storm, Friendship, Social media"')+
   `<label>The story or emotion we want to share<textarea data-f="story" maxlength="300">${esc(g.data.story)}</textarea></label><h3 class="sec">Music</h3>`+
@@ -459,7 +462,7 @@ setInterval(async()=>{if(view.name!=='class'||!remote||document.activeElement.ta
  console.assert(!safeUrl('javascript:alert(1)')&&safeUrl('https://youtu.be/x'),'safeUrl');
  console.assert(n.data.tools.canon==='y'&&!('nope'in n.data.tools)&&!n.data.paths[9]&&n.data.paths[0][0][0]===0&&n.data.dancers.length===6,'norm');
  console.assert(at(PH,0).aL===at(PH,4).aL&&flip(flip(B)).aR===B.aR,'animation loop');
- console.assert(JSON.stringify(parseRows([['Class','First name','Last name'],['9c','Aisha','Tan'],['','',''],['9H','Ben','']],'S'))==='[{"class_name":"9C","name":"Aisha Tan"},{"class_name":"9H","name":"Ben"}]','parse header');
+ console.assert(JSON.stringify(parseRows([['Class','First name','Last name'],['9c','Aisha','Tan'],['','',''],['9H','Ben','']],'S'))==='[{"class_name":"9C","name":"Aisha T."},{"class_name":"9H","name":"Ben"}]','parse header');
  console.assert(parseRows([['Name'],['Chen']],'7b')[0].class_name==='7B'&&parseRows([['9C','Dina']],'x')[0].name==='Dina'&&dedupe([{class_name:'A',name:'x'},{class_name:'A',name:'X'}]).length===1,'parse no class col');
  console.assert(Object.keys(TOOL).every(k=>DRAW[k])&&Object.keys(TOOL).length===21,'every tool has an animation')}
 
