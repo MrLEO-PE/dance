@@ -111,7 +111,7 @@ dd small,.tchip small{display:block;color:var(--mute);font-size:13px;font-weight
 .link{background:none;border:0;padding:0;text-decoration:underline;color:var(--hot);font-weight:700}
 .filebtn{display:inline-block;flex:none;font-size:16px;margin:0}
 .full{text-align:center;margin-top:12px;color:var(--mute);font-weight:700}
-</style>
+.pend{max-width:none;background:var(--card);border:2px solid var(--hot);border-radius:14px;padding:12px;flex-wrap:wrap}.pend label{min-width:200px}</style>
 </head>
 <body>
 <header class="top"><button id="back" hidden>Back</button><h1 id="title">Dance Studio</h1><span id="status" role="status"></span></header>
@@ -299,16 +299,17 @@ store.importRoster=async rows=>{const cls=[...new Set(rows.map(r=>r.class_name))
   else rlocal.set(rlocal.get().filter(r=>!cls.includes(r.class_name)).concat(rows))};
 // one sheet: rows of cells. Accepts "Class | Name" (or First name + Last name) columns, or a sheet per class with only names.
 function parseRows(rows,sheet){const out=[];rows=rows.map(r=>r.map(v=>String(v??'').trim())).filter(r=>r.some(Boolean));if(!rows.length)return out;
-  const isH=v=>v.length<26&&/^(student|pupil|first|last|given|family|forename|surname|name)/i.test(v),hi=rows.slice(0,12).findIndex(r=>r.some(isH));
-  // class: a Class/Set/Form column (8M, 8S...), else the title above the header ("8MS/Pe8 - Set List ..."), else the sheet name
-  const h=hi>=0?rows[hi].map(v=>v.toLowerCase()):[],title=(rows.slice(0,Math.max(hi,0)).flat().find(Boolean)||'').split(/\s+-\s+/)[0];
-  let ci=h.findIndex(v=>/^(class|set|form)\b/.test(v)),fi=h.findIndex(v=>/first|given|forename/.test(v)),li=h.findIndex(v=>/last|surname|family/.test(v)),
+  const isH=v=>v.length<26&&/^(student|pupil|first|last|given|family|forename|surname|name)/i.test(v),n=r=>r.filter(Boolean).length;
+  const hi=rows.slice(0,12).findIndex(r=>n(r)>1?r.some(isH):n(r)===1&&/^(name|student|pupil)s?$/i.test(r.find(Boolean)));
+  // class = Class/Set/Form column (8M); else Year Group column ("Year 7" -> "7", the teacher then adds the letter); else a sheet named like a class
+  const h=hi>=0?rows[hi].map(v=>v.toLowerCase()):[];
+  let ci=h.findIndex(v=>/^(class|set|form)\b/.test(v)),yi=h.findIndex(v=>/^year/.test(v)),fi=h.findIndex(v=>/first|given|forename/.test(v)),li=h.findIndex(v=>/last|surname|family/.test(v)),
     ni=fi>=0?fi:h.findIndex(v=>/name|student|pupil/.test(v)&&!/last|surname|family|class/.test(v)),body=rows.slice(hi+1);
-  if(hi<0){const w=Math.max(...rows.map(r=>r.length));ci=w>1?0:-1;ni=w>1?1:0;li=-1;body=rows}
+  if(hi<0){const w=Math.max(...rows.map(r=>r.length));ci=w>1?0:-1;ni=w>1?1:0;li=-1;yi=-1;body=rows}
   if(ni<0)return out;
-  for(const r of body){const f=r[ni],sn=li>=0?r[li]:'';if(!f)continue; // footer rows ("Total: 26") have no forename
-    const name=(f+(sn?' '+sn[0]+'.':'')).replace(/\s+/g,' ').slice(0,30),cls=((ci>=0&&r[ci])||title||sheet).toUpperCase().replace(/[",()]/g,'').trim().slice(0,12);
-    if(name&&cls)out.push({class_name:cls,name})}
+  for(const r of body){const f=r[ni],sn=li>=0?r[li]:'';if(!f||/^total\b/i.test(f)||/^total\b/i.test(sn))continue; // footer rows
+    const name=(f+(sn?' '+sn[0]+'.':'')).replace(/\s+/g,' ').slice(0,30),yd=yi>=0?(r[yi].match(/\d+/)||[''])[0]:'';
+    out.push({class_name:((ci>=0&&r[ci])||yd||(/^\d/.test(sheet)?sheet:'')).toUpperCase().replace(/[",()]/g,'').trim().slice(0,12),name})}
   return out}
 const dedupe=rows=>[...new Map(rows.map(r=>[r.class_name+'|'+r.name.toLowerCase(),r])).values()];
 const meAll=()=>{try{return JSON.parse(localStorage.getItem('dance_me'))||{}}catch{return{}}};
@@ -316,7 +317,7 @@ const getMe=c=>meAll()[c]||'';
 const setMe=(c,n)=>{const m=meAll();if(n)m[c]=n;else delete m[c];try{localStorage.setItem('dance_me',JSON.stringify(m))}catch{}};
 
 /* ---------- state ---------- */
-let roster=[],groups=[],view={name:'home'},cur=0,dirtyG=null,saveTimer=0,drawing=null;
+let pending=null,roster=[],groups=[],view={name:'home'},cur=0,dirtyG=null,saveTimer=0,drawing=null;
 const app=$('#app'),statusEl=$('#status'),titleEl=$('#title'),backEl=$('#back');
 const group=()=>groups.find(g=>g.id===view.id);
 function setStatus(t,k=''){statusEl.textContent=t||(remote?'':'Demo: saved on this device only');statusEl.className=k}
@@ -340,15 +341,20 @@ function stageInner(g){let s='<path class="grid" d="M50 0V100M0 50H100"/>';
   return s}
 const stageSvg=(g,live)=>`<svg class="stage${live?' live':''}" viewBox="0 0 100 100" role="img" aria-label="Stage seen from above with each dancer's pathway">${stageInner(g)}</svg>`;
 
+const isBare=c=>!c||/^\d+$/.test(c);
+function pendForm(){const k=pending.rows.find(r=>isBare(r.class_name)).class_name,c=pending.rows.filter(r=>r.class_name===k).length,
+  hint=((pending.file.match(/\b(?:year\s*)?(\d{1,2}[A-Za-z]{1,4})\b/i)||[])[1]||'').toUpperCase();
+  return`<form class="inline pend" data-form="pend"><label>${c} students${k?' in Year '+esc(k):''}. Which class is this list?<input name="v" maxlength="12" required value="${esc(hint)}" placeholder="${k?'Letter, e.g. I':'e.g. 7I'}" autocomplete="off"></label><button class="btn">Import</button><button type="button" class="btn ghost" data-cancelimp>Cancel</button></form>`}
 const yr=n=>(String(n).match(/^\d+/)||[''])[0]; // 8M, 8S -> Year 8
 function home(){const by={},st={};groups.forEach(g=>(by[g.class_name]=by[g.class_name]||[]).push(g));roster.forEach(r=>{st[r.class_name]=(st[r.class_name]||0)+1;by[r.class_name]=by[r.class_name]||[]});
   return`<section class="hero"><h2>Build your choreography, together.</h2><p>Pick your class, open your group and plan your dance. Every group can see every other group.</p></section>
+  ${pending?pendForm():''}
   ${Object.keys(by).length?'':'<h3 class="sec">Classes</h3><p class="mute">No class yet. Import your lists below or add one.</p>'}
   ${[...new Set(Object.keys(by).map(yr))].sort((a,b)=>a-b||(a>b?1:-1)).map(y=>`<h3 class="sec">${y?'Year '+esc(y):'Classes'}</h3><div class="classes">${Object.keys(by).filter(n=>yr(n)===y).sort().map(n=>`<button class="classbtn" data-cls="${esc(n)}"><b>${esc(n)}</b><span>${st[n]?st[n]+' students, ':''}${by[n].length} group${by[n].length===1?'':'s'}</span></button>`).join('')}</div>`).join('')}
   <form class="inline" data-form="cls"><label>New class<input name="v" maxlength="12" placeholder="e.g. 9C" required autocomplete="off"></label><button class="btn">Add class</button></form>
   <h3 class="sec">Teacher</h3>
   <label class="btn ghost filebtn">Import classes (Excel)<input type="file" accept=".xlsx,.xls,.csv" data-import hidden></label>
-  <p class="mute">One row per student with a Class column and a Name column, or one sheet per class (sheet name = class) with a Name column. Importing a class again replaces its list.</p>
+  <p class="mute">Use your school list as it is (Surname and Forename columns). If it has a Form or Class column, that is the class. If it only has a Year Group, you type the class letter after choosing the file. Importing a class again replaces its list.</p>
   <button class="libbtn" data-lib>Composition tools library<span>Watch the ${Object.keys(TOOL).length} animated tools</span></button>`}
 
 function card(g,act){const d=g.data,ts=Object.keys(d.tools),link=safeUrl(d.link),none='<span class="mute">Not yet</span>';
@@ -409,6 +415,7 @@ app.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)
   if(ds.cls)return go({name:'class',cls:ds.cls});
   if('lib'in ds)return go({name:'library'});
   if(ds.open)return go({name:'group',id:ds.open,cls:view.cls,tab:0});
+  if('cancelimp'in ds){pending=null;return render()}
   if(ds.tab){view.tab=+ds.tab;return render()}
   if('me'in ds){setMe(view.cls,ds.me);return render()}
   if(ds.join){const j=groups.find(x=>x.id===ds.join),me=getMe(view.cls),i=j?j.data.dancers.findIndex(d=>!d):-1;if(i<0)return;
@@ -426,7 +433,12 @@ app.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)
     clearTimeout(saveTimer);dirtyG=null;
     try{await store.remove(g.id);go({name:'class',cls:view.cls})}catch(err){setStatus('Could not delete. Check the wifi.','bad')}}
 });
-app.addEventListener('submit',e=>{e.preventDefault();const f=e.target,v=f.v.value.trim();if(!v)return;
+async function doImport(rows){setStatus('Importing…');await store.importRoster(rows);const cls=[...new Set(rows.map(r=>r.class_name))];pending=null;await go({name:'home'});setStatus(`Imported ${rows.length} students in ${cls.join(', ')}`,'ok')}
+app.addEventListener('submit',async e=>{e.preventDefault();const f=e.target,v=f.v.value.trim();if(!v)return;
+  if(f.dataset.form==='pend'){const k=pending.rows.find(r=>isBare(r.class_name)).class_name,V=v.toUpperCase().replace(/[",()]/g,'').slice(0,12),cls=/^\d/.test(V)?V:(k+V).slice(0,12);
+    pending.rows.forEach(r=>{if(r.class_name===k)r.class_name=cls});
+    if(pending.rows.some(r=>isBare(r.class_name)))return render();
+    try{return await doImport(dedupe(pending.rows))}catch(err){return setStatus('Import failed. Is the dance_roster table created?','bad')}}
   if(f.dataset.form==='cls')return go({name:'class',cls:v.toUpperCase()});
   const g=norm({id:uid(),class_name:view.cls,group_name:v,data:{dancers:[getMe(view.cls)]}});groups.push(g);dirtyG=g;go({name:'group',id:g.id,cls:view.cls,tab:0})});
 app.addEventListener('input',e=>{const el=e.target,ds=el.dataset,g=group();if(!g)return;
@@ -442,8 +454,8 @@ app.addEventListener('change',async e=>{const f=e.target;if(!('import'in f.datas
   try{const wb=XLSX.read(await f.files[0].arrayBuffer());
     const rows=dedupe(wb.SheetNames.flatMap(n=>parseRows(XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:''}),n)));
     if(!rows.length)return setStatus('No students found. Use a Class column and a Name column.','bad');
-    setStatus('Importing…');await store.importRoster(rows);
-    const cls=[...new Set(rows.map(r=>r.class_name))];await go({name:'home'});setStatus(`Imported ${rows.length} students in ${cls.join(', ')}`,'ok')}
+    if(rows.some(r=>isBare(r.class_name))){pending={rows,file:f.files[0].name};f.value='';return render()}
+    await doImport(rows)}
   catch(err){setStatus('Import failed. Is the dance_roster table created?','bad')}
   f.value=''});
 // drawing pathways on the stage
@@ -464,6 +476,7 @@ setInterval(async()=>{if(view.name!=='class'||!remote||document.activeElement.ta
  console.assert(n.data.tools.canon==='y'&&!('nope'in n.data.tools)&&!n.data.paths[9]&&n.data.paths[0][0][0]===0&&n.data.dancers.length===6,'norm');
  console.assert(at(PH,0).aL===at(PH,4).aL&&flip(flip(B)).aR===B.aR,'animation loop');
  console.assert(JSON.stringify(parseRows([['Class','First name','Last name'],['9c','Aisha','Tan'],['','',''],['9H','Ben','']],'S'))==='[{"class_name":"9C","name":"Aisha T."},{"class_name":"9H","name":"Ben"}]','parse header');
+ console.assert(JSON.stringify(parseRows([['Student Report'],['Surname','Forename','Gender','House','Year Group'],['Ang','Yu Hang','M','Blue','Year 7'],['','Total',20,'','']],'S'))==='[{"class_name":"7","name":"Yu Hang A."}]','parse year group');
  console.assert(parseRows([['Name'],['Chen']],'7b')[0].class_name==='7B'&&parseRows([['9C','Dina']],'x')[0].name==='Dina'&&dedupe([{class_name:'A',name:'x'},{class_name:'A',name:'X'}]).length===1,'parse no class col');
  console.assert(Object.keys(TOOL).every(k=>DRAW[k])&&Object.keys(TOOL).length===21,'every tool has an animation')}
 
