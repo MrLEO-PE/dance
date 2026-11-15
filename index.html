@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dance Studio</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&display=swap" rel="stylesheet">
+<!--
+SETUP (once, about 3 minutes). Without it the app runs in demo mode: data stays on one device.
+1. Supabase > SQL editor, run:
+
+   create table dance_groups (
+     id uuid primary key,
+     class_name text not null,
+     group_name text not null,
+     data jsonb not null default '{}',
+     updated_at timestamptz not null default now()
+   );
+   alter table dance_groups enable row level security;
+   create policy "open class tool" on dance_groups for all to anon using (true) with check (true);
+
+2. Paste your Project URL and anon (publishable) key in SUPABASE_URL / SUPABASE_KEY below.
+-->
+<style>
+:root{--paper:#f5f1ea;--ink:#17161c;--mute:#6b6772;--line:#ddd6ca;--card:#fff;--stage:#15141b;--hot:#d93a22;--ok:#1b7f45}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+h1,h2,h3,h4{font-family:"Bricolage Grotesque",system-ui,sans-serif;margin:0;line-height:1.15}
+button,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--hot);outline-offset:2px}
+.top{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:10px;height:56px;padding:0 14px;background:var(--stage);color:#fff}
+.top h1{font-size:19px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#back{background:none;border:1px solid #fff5;color:#fff;border-radius:99px;padding:6px 14px}
+#status{font-size:12px;color:#fffb;text-align:right}
+#status.ok{color:#7be3a4}#status.bad{color:#ff9d8f;font-weight:700}
+main{max-width:1080px;margin:0 auto;padding:16px 14px 60px}
+.mute{color:var(--mute)}
+.hero{background:var(--stage);color:#fff;border-radius:18px;padding:26px 20px;margin-bottom:22px}
+.hero h2{font-size:clamp(28px,7vw,46px);font-weight:800;max-width:14ch}
+.hero p{color:#fffc;margin:10px 0 0;max-width:46ch}
+.sec{font-size:20px;margin:22px 0 10px}
+.classes{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
+.classbtn{background:var(--card);border:2px solid var(--ink);border-radius:14px;padding:14px;text-align:left}
+.classbtn b{display:block;font:800 26px "Bricolage Grotesque",system-ui,sans-serif}
+.classbtn span{color:var(--mute);font-size:13px}
+.inline{display:flex;gap:8px;align-items:flex-end;margin:18px 0;max-width:460px}
+label{display:block;font-weight:600;font-size:14px;flex:1;margin:0 0 12px}
+.inline label{margin:0}
+input:not([type=checkbox]),textarea{display:block;width:100%;margin-top:4px;padding:11px 12px;border:1.5px solid var(--line);border-radius:10px;background:#fff;font-weight:400;font-size:16px}
+textarea{min-height:90px;resize:vertical}
+.btn{background:var(--ink);color:#fff;border:0;border-radius:10px;padding:12px 16px;font-weight:700;white-space:nowrap}
+.btn.wide{width:100%;margin-top:12px}
+.btn.ghost{background:none;color:var(--ink);border:1.5px solid var(--ink)}
+.btn.danger{background:none;color:var(--hot);border:1.5px solid var(--hot);margin-top:26px}
+.libbtn{width:100%;text-align:left;background:var(--hot);color:#fff;border:0;border-radius:14px;padding:16px;font-weight:700;margin-top:10px}
+.libbtn span{display:block;font-weight:400;font-size:14px;opacity:.9}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin:12px 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;display:flex;flex-direction:column}
+.cardtop{display:flex;gap:12px;justify-content:space-between}
+.cardtop h3{font-size:21px;margin-bottom:8px;overflow-wrap:anywhere}
+.cardtop .stage{width:104px;flex:none}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{background:var(--c);color:#000;border:2px solid transparent;border-radius:99px;padding:3px 10px;font-size:13px;font-weight:700}
+button.chip{padding:8px 14px;font-size:15px;opacity:.6}
+button.chip[aria-pressed=true]{opacity:1;border-color:var(--ink)}
+dl{margin:12px 0 0;display:grid;grid-template-columns:auto 1fr;gap:8px 12px;flex:1;align-content:start}
+dt{font-weight:700;font-size:13px;color:var(--mute);text-transform:uppercase;letter-spacing:.04em;padding-top:2px}
+dd{margin:0;overflow-wrap:anywhere}
+dd small,.tchip small{display:block;color:var(--mute);font-size:13px;font-weight:400}
+.tchip{display:inline-block;border:1.5px solid var(--ink);border-radius:9px;padding:2px 8px;margin:0 5px 5px 0;font-size:13px;font-weight:700;vertical-align:top}
+.pill{background:var(--line);border-radius:99px;padding:1px 7px;margin-left:4px;color:var(--ink)}
+.pill.ok{background:var(--ok);color:#fff}
+.tabs{display:flex;gap:4px;position:sticky;top:56px;z-index:4;background:var(--paper);padding:8px 0;margin-bottom:10px}
+.tabs button{flex:1;background:none;border:1.5px solid var(--line);border-radius:10px;padding:10px 2px;font-weight:700;font-size:14px}
+.tabs button[aria-selected=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.pane{max-width:760px}
+.pane.toolspane{max-width:none}
+.dancer{display:flex;align-items:center;gap:10px}
+.dancer input{margin:0}
+.dot{flex:none;width:34px;height:34px;border-radius:50%;background:var(--c);color:#000;display:grid;place-items:center;font-weight:800}
+.count{position:sticky;top:118px;z-index:3;background:var(--ink);color:#fff;border-radius:10px;padding:8px 12px;margin:0 0 4px}
+.count.ok{background:var(--ok)}
+.toolgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:10px}
+.tool{background:var(--card);border:2px solid var(--line);border-radius:14px;padding:8px;display:flex;flex-direction:column}
+.tool.on{border-color:var(--ok);box-shadow:0 0 0 2px var(--ok)}
+.anim{display:block;width:100%;padding:0;border:0;border-radius:9px;background:var(--stage);overflow:hidden}
+.anim canvas{display:block;width:100%;height:auto}
+.tool h4{font-size:17px;margin:8px 0 4px}
+.tool p{margin:0 0 8px;font-size:13px;color:var(--mute);flex:1}
+.tool [data-pick]{width:100%;background:none;border:1.5px solid var(--ink);border-radius:9px;padding:9px;font-weight:700}
+.tool.on [data-pick]{background:var(--ok);border-color:var(--ok);color:#fff}
+.tool input{display:none;font-size:14px;padding:8px}
+.tool.on input{display:block;margin-top:6px}
+.stagewrap{max-width:520px;text-align:center;font-size:12px;font-weight:700;letter-spacing:.14em;color:var(--mute);margin:12px 0}
+.stage{display:block;width:100%;aspect-ratio:1;background:var(--stage);border-radius:10px}
+.stage.live{touch-action:none;cursor:crosshair;margin:4px 0}
+.stage .grid{stroke:#fff2;stroke-width:.4;stroke-dasharray:2 2}
+.stage text{font:800 5px system-ui;text-anchor:middle;fill:#000;pointer-events:none}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.check{display:flex;gap:12px;align-items:flex-start;background:var(--card);border:1.5px solid var(--line);border-radius:12px;padding:14px;font-weight:400;font-size:16px}
+.check input{width:24px;height:24px;flex:none;margin:0;accent-color:var(--ok)}
+.check b{display:block}
+</style>
+</head>
+<body>
+<header class="top"><button id="back" hidden>Back</button><h1 id="title">Dance Studio</h1><span id="status" role="status"></span></header>
+<main id="app"></main>
+<script>
+const SUPABASE_URL='', SUPABASE_KEY='';
+
+/* ---------- helpers ---------- */
+const $=(s,r=document)=>r.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const safeUrl=u=>{try{const x=new URL(u);return /^https?:$/.test(x.protocol)?x.href:''}catch{return''}};
+const uid=()=>crypto.randomUUID?crypto.randomUUID():'10000000-1000-4000-8000-100000000000'.replace(/[018]/g,c=>(c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16));
+const COL=['#ff5a5f','#ffb400','#2ecc71','#33b5ff','#b07cff','#ff7ad9'];
+const READY=[
+ ['Composition tools','We use at least 4 different tools and they are easy to see.'],
+ ['Mastery','We know our choreography. No hesitations.'],
+ ['Space and story','Our pathways, our music and our topic work together and share an emotion.'],
+ ['Group work','We warm up together and stay focused on the choreography we will present.'],
+ ['Judging','We can watch another group and say which tools we saw, if they know their dance, and how it links to their topic.']];
+
+/* ---------- composition tools: stick figure engine ---------- */
+const W=200,HT=150,GY=122,RAD=Math.PI/180;
+// pose: x/y offset, rot = whole body lean, s = size, to = torso tilt, hd = head tilt,
+// a = arm (0 down, 90 side, 180 up), e = elbow, t = thigh out, k = knee bend. L/R sides.
+const P0={x:0,y:0,rot:0,s:1,to:0,hd:0,aL:12,eL:0,aR:12,eR:0,tL:6,kL:0,tR:6,kR:0};
+const pose=o=>({...P0,...o});
+const mix=(a,b,f)=>{const o={};for(const k in P0)o[k]=a[k]+(b[k]-a[k])*f;return o};
+const ease=f=>f*f*(3-2*f);
+const clamp=f=>Math.max(0,Math.min(1,f));
+const flip=p=>({...p,x:-p.x,rot:-p.rot,to:-p.to,hd:-p.hd,aL:p.aR,eL:p.eR,aR:p.aL,eR:p.eL,tL:p.tR,kL:p.kR,tR:p.tL,kR:p.kL});
+// phrase = list of poses, one per beat: move during the first 60% of the beat, then hold
+function at(ph,t){const n=ph.length;t=((t%n)+n)%n;const i=Math.floor(t);return mix(ph[(i+n-1)%n],ph[i],ease(Math.min((t-i)/.6,1)))}
+const vec=(len,deg)=>[len*Math.sin(deg*RAD),len*Math.cos(deg*RAD)];
+const stroke=(c,col,...pts)=>{c.strokeStyle=col;c.lineWidth=4;c.lineCap=c.lineJoin='round';c.beginPath();pts.forEach((q,i)=>i?c.lineTo(q[0],q[1]):c.moveTo(q[0],q[1]));c.stroke()};
+// draws one dancer standing at bx; returns the shoulder point (for arms drawn by hand)
+function fig(c,bx,p,col,skipArms){
+  const leg=(sg,th,k)=>{const a=vec(15,sg*th),b=vec(15,sg*(th-k));return[a,[a[0]+b[0],a[1]+b[1]]]};
+  const L=leg(-1,p.tL,p.kL),R=leg(1,p.tR,p.kR),hip=-Math.max(L[1][1],R[1][1]);
+  const up=vec(26,180-p.to),nk=[up[0],hip+up[1]],hd=vec(8,180-p.to-p.hd),ox=bx+p.x,oy=GY-p.y;
+  c.save();c.translate(ox,oy);c.rotate(p.rot*RAD);c.scale(p.s,p.s);
+  for(const g of[L,R])stroke(c,col,[0,hip],[g[0][0],hip+g[0][1]],[g[1][0],hip+g[1][1]]);
+  stroke(c,col,[0,hip],nk);
+  if(!skipArms)for(const[sg,a,e]of[[-1,p.aL,p.eL],[1,p.aR,p.eR]]){
+    const u=vec(13,sg*a-p.to),f=vec(12,sg*(a+e)-p.to);
+    stroke(c,col,nk,[nk[0]+u[0],nk[1]+u[1]],[nk[0]+u[0]+f[0],nk[1]+u[1]+f[1]])}
+  c.fillStyle=col;c.beginPath();c.arc(nk[0]+hd[0],nk[1]+hd[1],6,0,7);c.fill();c.restore();
+  const cs=Math.cos(p.rot*RAD),sn=Math.sin(p.rot*RAD),sx=nk[0]*p.s,sy=nk[1]*p.s;
+  return[ox+sx*cs-sy*sn,oy+sx*sn+sy*cs];
+}
+const lab=(c,s,x,y=142)=>{c.fillStyle='#fffd';c.font='600 12px system-ui';c.textAlign='center';c.fillText(s,x,y)};
+const dash=(c,x)=>{c.strokeStyle='#fff6';c.lineWidth=1;c.setLineDash([3,4]);c.beginPath();c.moveTo(x,12);c.lineTo(x,GY);c.stroke();c.setLineDash([])};
+const row=n=>Array.from({length:n},(_,i)=>W*(i+1)/(n+1));
+const blocks=(c,x,order,cur)=>order.forEach((k,j)=>{c.globalAlpha=j===cur?1:.4;c.fillStyle=COL[k+2];c.fillRect(x+j*13,130,11,11);c.globalAlpha=1;c.fillStyle='#000';c.font='700 8px system-ui';c.textAlign='center';c.fillText(k+1,x+j*13+5.5,138.5)});
+
+const N=pose({}),
+ A=pose({aL:160,aR:160}),
+ B=pose({to:16,aL:35,aR:150,tL:22}),
+ C=pose({tL:50,kL:100,tR:50,kR:100,aL:75,aR:75,eL:60,eR:60}),
+ D=pose({to:-10,aL:90,aR:90,tR:48}),
+ E=pose({aL:90,aR:90,eL:90,eR:90}),
+ G=pose({tL:28,tR:28,aL:125,aR:125}),
+ H=pose({tL:65,kL:130,tR:65,kR:130,aL:30,aR:30}),
+ PH=[A,B,C,D];
+
+// one function per tool: draw the scene at time t (in beats). Edit these to change an animation.
+const DRAW={
+ unison(c,t){row(4).forEach((x,i)=>fig(c,x,at(PH,t),COL[i]))},
+ canon(c,t){row(4).forEach((x,i)=>fig(c,x,at(PH,t-i*.5),COL[i]))},
+ accumulation(c,t){const ph=[A,N,A,B,N,A,B,C,N,A,B,C,D,N],i=Math.floor(t%14);
+  [70,130].forEach((x,k)=>fig(c,x,at(ph,t),COL[k]));lab(c,i<2?'1':i<5?'1 + 2':i<9?'1 + 2 + 3':'1 + 2 + 3 + 4',100)},
+ repetition(c,t){row(3).forEach((x,i)=>fig(c,x,at([A,N],t),COL[i]));lab(c,'× '+(Math.floor(t/2)%4+1),100)},
+ mirroring(c,t){dash(c,100);fig(c,62,at(PH,t),COL[0]);fig(c,138,flip(at(PH,t)),COL[3])},
+ shadowing(c,t){fig(c,113,{...at(PH,t-.12),y:9,s:.94},'#666377');fig(c,95,at(PH,t),COL[1])},
+ call(c,t){const q=t%4<2;[45,78].forEach(x=>fig(c,x,at([A,B,N,N],t),COL[0]));[122,155].forEach(x=>fig(c,x,at([N,N,E,H],t),COL[3]));lab(c,q?'call':'response',q?61:139)},
+ counterpoint(c,t){fig(c,50,at(PH,t),COL[0]);fig(c,100,at([E,H,G,N],t*2),COL[2]);fig(c,150,at([G,N],t*.5),COL[4])},
+ retrograde(c,t){const u=t%8,f=u<4;fig(c,100,at(PH,f?u:8-u),COL[3]);lab(c,f?'forward →':'← backward',100)},
+ augmentation(c,t){fig(c,55,at(PH,t),COL[1]);lab(c,'original',55);fig(c,138,{...at(PH,t/2),s:1.3},COL[4]);lab(c,'slower + bigger',138)},
+ diminution(c,t){fig(c,60,at(PH,t),COL[1]);lab(c,'original',60);fig(c,140,{...at(PH,t*2),s:.65},COL[2]);lab(c,'faster + smaller',140)},
+ fragmentation(c,t){const i=Math.floor(t%4),o=[2,0,3,1];
+  fig(c,55,at(PH,t),COL[1]);fig(c,145,at(o.map(k=>PH[k]),t),COL[1]);blocks(c,29,[0,1,2,3],i);blocks(c,119,o,i)},
+ embellishment(c,t){const p=at([A,N],t),w=Math.sin(t*Math.PI*4)*(p.aL-12)/148;
+  fig(c,60,p,COL[0]);lab(c,'basic',60);fig(c,140,{...p,hd:20*w,eL:45*w,eR:-45*w,to:6*w},COL[5]);lab(c,'+ details',140)},
+ motif(c,t){const s=Math.floor(t/2)%4,v=[E,{...E,s:1.3,aL:125,aR:125,tL:25,tR:25},{...E,tL:60,kL:120,tR:60,kR:120},{...E,x:38,to:14,tL:22}][s];
+  fig(c,s===3?82:100,at([v,N],t%2),COL[2]);lab(c,['motif','bigger','lower','travelling'][s],100)},
+ levels(c,t){const w=Math.sin(t*2),j=Math.max(0,Math.sin(t*2.4));
+  fig(c,14,pose({rot:90,y:3,s:.9,tL:28+18*w,tR:0,aL:95+35*w,aR:4}),COL[0]);lab(c,'low',48);
+  fig(c,118,pose({tL:38,kL:76,tR:38,kR:76,aL:80+25*w,aR:80-25*w,to:8*w}),COL[1]);lab(c,'middle',118);
+  fig(c,168,pose({y:26*j,aL:60+105*j,aR:60+105*j,tL:8+14*j,tR:8+14*j,kL:30*(1-j),kR:30*(1-j)}),COL[3]);lab(c,'high',168)},
+ symmetry(c,t){const u=t%8,f=ease(clamp(u<4?u-3:8-u)),S=[[36,G],[68,B],[100,A],[132,flip(B)],[164,G]],Y=[[24,H],[46,A],[70,B],[128,C],[178,D]];
+  if(f<.5)dash(c,100);S.forEach(([x,p],i)=>fig(c,x+(Y[i][0]-x)*f,{...mix(p,Y[i][1],f),s:.7},COL[i]));lab(c,f<.5?'symmetry':'asymmetry',100)},
+ transition(c,t){const F=[[[35,70],[61,70],[87,70],[113,70],[139,70],[165,70]],
+   [0,1,2,3,4,5].map(i=>[100+36*Math.sin(i*60*RAD),68-36*Math.cos(i*60*RAD)]),
+   [[100,34],[78,66],[122,66],[56,100],[100,100],[144,100]]],names=['line','circle','triangle'];
+  const u=t%9,s=Math.floor(u/3),f=ease(clamp((u%3-1.5)/1.5)),a=F[s],b=F[(s+1)%3];
+  a.forEach((p,i)=>{const x=p[0]+(b[i][0]-p[0])*f,y=p[1]+(b[i][1]-p[1])*f;c.fillStyle=COL[i];c.beginPath();c.arc(x,y,7,0,7);c.fill()});
+  lab(c,names[s]+(f>0&&f<1?' → '+names[(s+1)%3]:''),100);lab(c,'seen from above',100,15)},
+ weight(c,t){const w=Math.sin(t*1.5),p=pose({rot:-(15+5*w),tL:8,kL:12+10*w,tR:8,kR:12+10*w});
+  const a=fig(c,91,p,COL[0],1),b=fig(c,109,flip(p),COL[3],1),m=[100,(a[1]+b[1])/2+5];
+  stroke(c,COL[0],a,m);stroke(c,COL[3],b,m);c.fillStyle='#fff';c.beginPath();c.arc(m[0],m[1],3,0,7);c.fill()},
+ lifts(c,t){const u=t%6,f=ease(clamp(u<1.5?u/1.5:u<4?1:(5.5-u)/1.5));
+  const base=mix(pose({tL:35,kL:70,tR:35,kR:70}),pose({tL:14,tR:14}),f),fl=mix(pose({tL:20,kL:40,tR:20,kR:40,s:.9}),pose({y:44,aL:118,aR:118,tL:12,tR:12,s:.9}),f);
+  const a=fig(c,78,base,COL[0],1),b=fig(c,122,base,COL[3],1),hy=GY-fl.y-18;
+  fig(c,100,fl,COL[1]);stroke(c,COL[0],a,[93,hy]);stroke(c,COL[3],b,[107,hy])},
+ contact(c,t){const s=Math.sin(t*.9),k=Math.cos(t*.9);
+  const a=fig(c,84,pose({rot:16+12*s,tL:15+15*s,kL:30+30*s,tR:15+15*s,kR:30+30*s,aL:70+40*k,aR:35}),COL[2]);
+  const b=fig(c,116,pose({rot:-16+12*s,tL:15-15*s,kL:30-30*s,tR:15-15*s,kR:30-30*s,aR:70-40*k,aL:35}),COL[5]);
+  c.fillStyle='#fff';c.beginPath();c.arc((a[0]+b[0])/2,(a[1]+b[1])/2,3.5,0,7);c.fill();lab(c,'always touching',100)},
+ action(c,t){const q=t%4<2,push=pose({to:14,aR:95,aL:30,tL:16}),recoil=pose({x:22,to:22,aL:115,aR:60,tR:26});
+  fig(c,62,at([push,N,flip(recoil),N],q?t:t-.3),COL[0]);fig(c,128,at([recoil,N,flip(push),N],q?t-.3:t),COL[4]);
+  lab(c,q?'action':'reaction',62);lab(c,q?'reaction':'action',128)}
+};
+const CATS=[
+ ['Group and timing',[
+  ['unison','Unison','Dancers perform the exact same movement at the exact same time.'],
+  ['canon','Canon','Dancers perform the same movement one after another, creating a ripple or wave effect.'],
+  ['accumulation','Accumulation','A phrase starts with one movement, and new movements are added each time it repeats.'],
+  ['repetition','Repetition','Repeating a specific movement or phrase to emphasize an idea or rhythm.']]],
+ ['Space and relationships',[
+  ['mirroring','Mirroring','Two or more dancers face each other and move as if looking into a mirror.'],
+  ['shadowing','Shadowing','One dancer stands behind another and copies their movements closely, like a shadow.'],
+  ['call','Call and response','One dancer or group performs a phrase, and another group answers with a different or matching phrase.'],
+  ['counterpoint','Counterpoint','Dancers perform completely different movements, rhythms or speeds at the same time to create contrast.']]],
+ ['Time and dynamics',[
+  ['retrograde','Retrograde','Dancers perform a phrase completely backward, like rewinding a video.'],
+  ['augmentation','Augmentation','Dancers perform a movement much slower or physically larger than the original.'],
+  ['diminution','Diminution','Dancers perform a movement much faster or physically smaller than the original.'],
+  ['fragmentation','Fragmentation','A phrase is broken into smaller pieces and rearranged in a new order.'],
+  ['embellishment','Embellishment','Dancers add extra details to a basic movement, such as a head turn or a hand flick.']]],
+ ['Formations and pathways',[
+  ['motif','Motif and development','A short movement idea (a motif) is repeated and changed throughout the dance to build a theme.'],
+  ['levels','Levels','Dancers move at different heights: low (on the floor), middle (standing or crouched) and high (jumping or lifted).'],
+  ['symmetry','Symmetry and asymmetry','Dancers form balanced, matching shapes (symmetry) or intentionally uneven shapes (asymmetry).'],
+  ['transition','Transition','Smoothly connecting one movement, shape or formation into the next.']]],
+ ['Contact and interaction',[
+  ['weight','Weight sharing','Dancers lean on, pull against or counterbalance each other so that neither could hold the pose alone.'],
+  ['lifts','Lifts and partnering','One or more dancers physically support another dancer off the floor.'],
+  ['contact','Contact improvisation','Dancers stay in physical contact and create movement by rolling, sliding and shifting weight together.'],
+  ['action','Action and reaction','One dancer performs a movement that visibly causes another dancer to respond, like a pretend push or pull.']]]];
+const TOOL={};CATS.forEach(([,ts])=>ts.forEach(([id,name,def])=>TOOL[id]={name,def}));
+
+const STILL=matchMedia('(prefers-reduced-motion: reduce)').matches; // then animations play only when tapped
+const io=new IntersectionObserver(es=>es.forEach(e=>e.target._on=e.isIntersecting));
+function mount(){for(const cv of document.querySelectorAll('canvas[data-anim]')){if(cv._c)continue;cv._c=cv.getContext('2d');cv._c.scale(2,2);cv._t=.7;cv._still=STILL;io.observe(cv)}}
+let last=0;
+function frame(ms){const dt=Math.min(.05,(ms-last)/1000);last=ms;
+  for(const cv of document.querySelectorAll('canvas[data-anim]')){
+    if(!cv._c||!cv._on||(cv._still&&cv._done))continue;
+    if(!cv._still)cv._t+=dt*1.4;
+    const c=cv._c;c.clearRect(0,0,W,HT);
+    if(cv.dataset.anim!=='transition'){c.fillStyle='#22212c';c.fillRect(0,GY,W,HT-GY)}
+    DRAW[cv.dataset.anim](c,cv._t);cv._done=true}
+  requestAnimationFrame(frame)}
+requestAnimationFrame(frame);
+
+/* ---------- storage: Supabase when configured, else this device only ---------- */
+// shortcut: a save writes the whole group, so two devices editing one group at once = last save wins; upgrade to per-field updates if groups work on several devices.
+const remote=!!(SUPABASE_URL&&SUPABASE_KEY),REST=SUPABASE_URL+'/rest/v1/dance_groups';
+async function call(url,opt={}){
+  const r=await fetch(url,{...opt,headers:{apikey:SUPABASE_KEY,Authorization:'Bearer '+SUPABASE_KEY,'Content-Type':'application/json',...opt.headers}});
+  const t=await r.text();if(!r.ok)throw new Error(t);return t?JSON.parse(t):null}
+const local={get(){try{return JSON.parse(localStorage.getItem('dance_groups'))||[]}catch{return[]}},set(g){try{localStorage.setItem('dance_groups',JSON.stringify(g))}catch{}}};
+const store={
+  async list(){return remote?call(REST+'?select=*&order=group_name'):local.get()},
+  async save(g){g.updated_at=new Date().toISOString();
+    if(remote)await call(REST+'?on_conflict=id',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(g)});
+    else local.set(local.get().filter(x=>x.id!==g.id).concat(g))},
+  async remove(id){if(remote)await call(REST+'?id=eq.'+encodeURIComponent(id),{method:'DELETE'});else local.set(local.get().filter(x=>x.id!==id))}
+};
+// everything read from storage was typed by someone else: force it into the expected shape
+function norm(g){const d=g.data&&typeof g.data==='object'?g.data:{},str=(v,n)=>String(v??'').slice(0,n);
+  return{id:String(g.id),class_name:str(g.class_name,12),group_name:str(g.group_name,40),updated_at:g.updated_at,data:{
+    dancers:Array.from({length:6},(_,i)=>str(d.dancers&&d.dancers[i],20)),
+    topic:str(d.topic,80),story:str(d.story,300),music:str(d.music,80),artist:str(d.artist,80),link:str(d.link,300),
+    tools:Object.fromEntries(Object.entries(d.tools||{}).filter(([k])=>TOOL[k]).map(([k,v])=>[k,str(v,80)])),
+    paths:Object.fromEntries(Object.entries(d.paths||{}).filter(([k,v])=>k>=0&&k<6&&Array.isArray(v)).map(([k,v])=>[k,v.slice(0,400).map(p=>[+p[0]||0,+p[1]||0])])),
+    ready:READY.map((_,i)=>!!(d.ready&&d.ready[i]))}}}
+
+/* ---------- state ---------- */
+let groups=[],view={name:'home'},cur=0,dirtyG=null,saveTimer=0,drawing=null;
+const app=$('#app'),statusEl=$('#status'),titleEl=$('#title'),backEl=$('#back');
+const group=()=>groups.find(g=>g.id===view.id);
+function setStatus(t,k=''){statusEl.textContent=t||(remote?'':'Demo: saved on this device only');statusEl.className=k}
+function touch(g){dirtyG=g;setStatus('Saving…');clearTimeout(saveTimer);saveTimer=setTimeout(flush,700)}
+async function flush(){clearTimeout(saveTimer);const g=dirtyG;if(!g)return;dirtyG=null;
+  try{await store.save(g);if(!dirtyG)setStatus('Saved ✓','ok')}
+  catch(e){dirtyG=dirtyG||g;setStatus('Not saved. Check the wifi.','bad');saveTimer=setTimeout(flush,5000)}}
+async function load(){
+  try{groups=(await store.list()).map(norm);if(statusEl.className==='bad')setStatus('')}catch(e){setStatus('Could not load. Check the wifi.','bad')}
+  if(dirtyG)groups=groups.filter(x=>x.id!==dirtyG.id).concat(dirtyG)} // never drop unsaved work
+async function go(v){await flush();view=v;await load();render()}
+
+/* ---------- views ---------- */
+function stageInner(g){let s='<path class="grid" d="M50 0V100M0 50H100"/>';
+  g.data.dancers.forEach((n,i)=>{const p=g.data.paths[i];if(!n||!p||!p.length)return;
+    const e=p[p.length-1],b=p[Math.max(0,p.length-4)];
+    s+=`<polyline points="${p.map(q=>q.join(',')).join(' ')}" fill="none" stroke="${COL[i]}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`;
+    if(p.length>1)s+=`<path d="M-1-3.4L5.5 0L-1 3.4Z" fill="${COL[i]}" transform="translate(${e[0]} ${e[1]}) rotate(${Math.atan2(e[1]-b[1],e[0]-b[0])/RAD})"/>`;
+    s+=`<circle cx="${p[0][0]}" cy="${p[0][1]}" r="4.2" fill="${COL[i]}"/><text x="${p[0][0]}" y="${p[0][1]+1.8}">${i+1}</text>`});
+  return s}
+const stageSvg=(g,live)=>`<svg class="stage${live?' live':''}" viewBox="0 0 100 100" role="img" aria-label="Stage seen from above with each dancer's pathway">${stageInner(g)}</svg>`;
+
+function home(){const by={};groups.forEach(g=>(by[g.class_name]=by[g.class_name]||[]).push(g));
+  return`<section class="hero"><h2>Build your choreography, together.</h2><p>Pick your class, open your group and plan your dance. Every group can see every other group.</p></section>
+  <h3 class="sec">Classes</h3>
+  <div class="classes">${Object.keys(by).sort().map(n=>`<button class="classbtn" data-cls="${esc(n)}"><b>${esc(n)}</b><span>${by[n].length} group${by[n].length>1?'s':''}</span></button>`).join('')||'<p class="mute">No class yet. Add the first one below.</p>'}</div>
+  <form class="inline" data-form="cls"><label>New class<input name="v" maxlength="12" placeholder="e.g. 9C" required autocomplete="off"></label><button class="btn">Add class</button></form>
+  <button class="libbtn" data-lib>Composition tools library<span>Watch the ${Object.keys(TOOL).length} animated tools</span></button>`}
+
+function card(g){const d=g.data,ts=Object.keys(d.tools),link=safeUrl(d.link),none='<span class="mute">Not yet</span>';
+  const music=[d.music,d.artist].filter(Boolean).map(esc).join(', ');
+  return`<article class="card"><div class="cardtop"><div><h3>${esc(g.group_name)}</h3>
+  <div class="chips">${d.dancers.map((n,i)=>n&&`<span class="chip" style="--c:${COL[i]}">${esc(n)}</span>`).filter(Boolean).join('')||'<span class="mute">No dancers yet</span>'}</div></div>${stageSvg(g)}</div>
+  <dl><dt>Topic</dt><dd>${esc(d.topic)||none}${d.story?`<small>${esc(d.story)}</small>`:''}</dd>
+  <dt>Music</dt><dd>${music||(link?'':none)} ${link?`<a href="${esc(link)}" target="_blank" rel="noopener">Listen</a>`:''}</dd>
+  <dt>Tools<span class="pill ${ts.length>=4?'ok':''}">${ts.length}/4</span></dt><dd>${ts.map(k=>`<span class="tchip">${TOOL[k].name}${d.tools[k]?`<small>${esc(d.tools[k])}</small>`:''}</span>`).join('')||none}</dd>
+  <dt>Ready</dt><dd>${d.ready.filter(Boolean).length}/${READY.length} checks</dd></dl>
+  <button class="btn wide" data-open="${esc(g.id)}">Open group</button></article>`}
+function classView(){const gs=groups.filter(g=>g.class_name===view.cls);
+  return`<p class="mute">${gs.length?gs.length+' group'+(gs.length>1?'s':'')+'. The stage shows each group\'s use of space.':'No group yet. Create the first one.'}</p>
+  <div class="cards">${gs.map(card).join('')}</div>
+  <form class="inline" data-form="grp"><label>New group<input name="v" maxlength="40" placeholder="Group name" required autocomplete="off"></label><button class="btn">Create group</button></form>`}
+
+const toolCard=(id,g)=>{const t=TOOL[id],on=g&&id in g.data.tools;
+  return`<article class="tool${on?' on':''}"><button class="anim" aria-label="Play or pause the ${t.name} animation"><canvas data-anim="${id}" width="${W*2}" height="${HT*2}"></canvas></button><h4>${t.name}</h4><p>${t.def}</p>
+  ${g?`<button data-pick="${id}" aria-pressed="${on}">${on?'Chosen ✓':'Choose'}</button><input data-note="${id}" maxlength="80" placeholder="Where in our dance?" aria-label="Where do we use ${t.name} in our dance?" value="${esc(g.data.tools[id])}">`:''}</article>`};
+const countText=n=>n+' chosen. '+(n>=4?'Make sure each one is easy to see.':'Choose at least 4.');
+function toolsPane(g){const n=g?Object.keys(g.data.tools).length:0;
+  return(g?`<p class="count${n>=4?' ok':''}" id="count">${countText(n)}</p>`:'')+CATS.map(([c,ts])=>`<h3 class="sec">${c}</h3><div class="toolgrid">${ts.map(([id])=>toolCard(id,g)).join('')}</div>`).join('')}
+
+const field=(l,f,g,x='')=>`<label>${l}<input data-f="${f}" value="${esc(g.data[f])}" ${x}></label>`;
+const PANES=[
+ g=>`<label>Group name<input data-top="group_name" maxlength="40" value="${esc(g.group_name)}"></label><h3 class="sec">Dancers (6 max)</h3>
+  ${g.data.dancers.map((n,i)=>`<label class="dancer"><span class="dot" style="--c:${COL[i]}">${i+1}</span><input data-d="${i}" maxlength="20" placeholder="First name" aria-label="Dancer ${i+1} first name" value="${esc(n)}"></label>`).join('')}
+  <button class="btn danger" data-del>Delete this group</button>`,
+ g=>field('Topic of our dance','topic',g,'maxlength="80" placeholder="e.g. Storm, Friendship, Social media"')+
+  `<label>The story or emotion we want to share<textarea data-f="story" maxlength="300">${esc(g.data.story)}</textarea></label><h3 class="sec">Music</h3>`+
+  field('Title','music',g,'maxlength="80"')+field('Artist','artist',g,'maxlength="80"')+field('Link (optional)','link',g,'type="url" maxlength="300" placeholder="https://"'),
+ g=>toolsPane(g),
+ g=>{const named=g.data.dancers.map((n,i)=>[n,i]).filter(([n])=>n);
+  if(!named.length)return'<p>Add your dancers first, then come back to draw their pathways.</p><button class="btn" data-tab="0">Add dancers</button>';
+  if(!named.some(([,i])=>i===cur))cur=named[0][1];
+  return`<p>Pick a dancer, then draw their pathway on the stage with your finger. Drawing again replaces it. The numbered dot is where the dancer starts.</p>
+  <div class="chips">${named.map(([n,i])=>`<button class="chip" data-cur="${i}" aria-pressed="${i===cur}" style="--c:${COL[i]}">${i+1} ${esc(n)}</button>`).join('')}</div>
+  <div class="stagewrap">BACK OF THE STAGE${stageSvg(g,true)}AUDIENCE</div>
+  <div class="row"><button class="btn ghost" data-clear="one">Clear this dancer</button><button class="btn ghost" data-clear="all">Clear all</button></div>`},
+ g=>'<p>Tick each line only when the whole group agrees.</p>'+READY.map(([h,t],i)=>`<label class="check"><input type="checkbox" data-r="${i}"${g.data.ready[i]?' checked':''}><span><b>${h}</b>${t}</span></label>`).join('')
+];
+function groupView(){const g=group();if(!g)return'<p>This group no longer exists.</p>';const t=view.tab||0;
+  return`<nav class="tabs" role="tablist">${['Team','Story','Tools','Space','Ready'].map((n,i)=>`<button role="tab" aria-selected="${i===t}" data-tab="${i}">${n}</button>`).join('')}</nav>
+  <section class="pane${t===2?' toolspane':''}">${PANES[t](g)}</section>`}
+
+function render(keepScroll){const v=view,y=scrollY;backEl.hidden=v.name==='home';
+  titleEl.textContent=v.name==='home'?'Dance Studio':v.name==='library'?'Composition tools':v.name==='class'?'Class '+v.cls:group()?group().group_name:'Group';
+  app.innerHTML={home,class:classView,group:groupView,library:()=>toolsPane(null)}[v.name]();
+  mount();scrollTo(0,keepScroll?y:0)}
+
+/* ---------- events ---------- */
+backEl.onclick=()=>go(view.name==='group'?{name:'class',cls:view.cls}:{name:'home'});
+app.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;const ds=b.dataset,g=group();
+  if(ds.cls)return go({name:'class',cls:ds.cls});
+  if('lib'in ds)return go({name:'library'});
+  if(ds.open)return go({name:'group',id:ds.open,cls:view.cls,tab:0});
+  if(ds.tab){view.tab=+ds.tab;return render()}
+  if(b.classList.contains('anim')){const cv=b.firstElementChild;cv._still=!cv._still;cv._done=false;return}
+  if(!g)return;
+  if(ds.pick){const on=!(ds.pick in g.data.tools),card=b.closest('.tool'),n=Object.keys(g.data.tools).length+(on?1:-1);
+    if(on)g.data.tools[ds.pick]=$('input',card).value;else delete g.data.tools[ds.pick];
+    card.classList.toggle('on',on);b.setAttribute('aria-pressed',on);b.textContent=on?'Chosen ✓':'Choose';
+    $('#count').textContent=countText(n);$('#count').classList.toggle('ok',n>=4);return touch(g)}
+  if(ds.cur){cur=+ds.cur;app.querySelectorAll('[data-cur]').forEach(x=>x.setAttribute('aria-pressed',x===b));return}
+  if(ds.clear){if(ds.clear==='all')g.data.paths={};else delete g.data.paths[cur];$('.stage.live').innerHTML=stageInner(g);return touch(g)}
+  if('del'in ds){
+    if(!b._armed){b._armed=1;b.textContent='Tap again to delete for everyone';return setTimeout(()=>{b._armed=0;b.textContent='Delete this group'},4000)}
+    clearTimeout(saveTimer);dirtyG=null;
+    try{await store.remove(g.id);go({name:'class',cls:view.cls})}catch(err){setStatus('Could not delete. Check the wifi.','bad')}}
+});
+app.addEventListener('submit',e=>{e.preventDefault();const f=e.target,v=f.v.value.trim();if(!v)return;
+  if(f.dataset.form==='cls')return go({name:'class',cls:v.toUpperCase()});
+  const g=norm({id:uid(),class_name:view.cls,group_name:v});groups.push(g);dirtyG=g;go({name:'group',id:g.id,cls:view.cls,tab:0})});
+app.addEventListener('input',e=>{const el=e.target,ds=el.dataset,g=group();if(!g)return;
+  if(ds.top){g[ds.top]=el.value;titleEl.textContent=el.value||'Group'}
+  else if(ds.f)g.data[ds.f]=el.value;
+  else if(ds.d)g.data.dancers[+ds.d]=el.value;
+  else if(ds.note){if(!(ds.note in g.data.tools))return;g.data.tools[ds.note]=el.value}
+  else if(ds.r)g.data.ready[+ds.r]=el.checked;
+  else return;
+  touch(g)});
+// drawing pathways on the stage
+const pt=(svg,e)=>{const r=svg.getBoundingClientRect(),cl=v=>Math.round(Math.max(0,Math.min(100,v))*10)/10;return[cl((e.clientX-r.left)/r.width*100),cl((e.clientY-r.top)/r.height*100)]};
+app.addEventListener('pointerdown',e=>{const svg=e.target.closest('.stage.live');if(!svg)return;e.preventDefault();svg.setPointerCapture(e.pointerId);
+  drawing=group().data.paths[cur]=[pt(svg,e)];svg.innerHTML=stageInner(group())});
+app.addEventListener('pointermove',e=>{const svg=$('.stage.live');if(!drawing||!svg)return;const p=pt(svg,e),l=drawing[drawing.length-1];
+  if(Math.hypot(p[0]-l[0],p[1]-l[1])<1.5||drawing.length>=400)return;drawing.push(p);svg.innerHTML=stageInner(group())});
+const endDraw=()=>{if(drawing){drawing=null;touch(group())}};
+app.addEventListener('pointerup',endDraw);app.addEventListener('pointercancel',endDraw);
+// keep the class overview fresh for the teacher's screen
+setInterval(async()=>{if(view.name!=='class'||!remote||document.activeElement.tagName==='INPUT')return;await load();if(view.name==='class')render(true)},15000);
+
+/* ---------- self-check (see the console) ---------- */
+{const n=norm({id:1,data:{tools:{nope:'x',canon:'y'},paths:{9:[[1,2]],0:[['a',5]]},dancers:['<b>']}});
+ console.assert(esc('<a href="x">')==='&lt;a href=&quot;x&quot;&gt;','esc');
+ console.assert(!safeUrl('javascript:alert(1)')&&safeUrl('https://youtu.be/x'),'safeUrl');
+ console.assert(n.data.tools.canon==='y'&&!('nope'in n.data.tools)&&!n.data.paths[9]&&n.data.paths[0][0][0]===0&&n.data.dancers.length===6,'norm');
+ console.assert(at(PH,0).aL===at(PH,4).aL&&flip(flip(B)).aR===B.aR,'animation loop');
+ console.assert(Object.keys(TOOL).every(k=>DRAW[k])&&Object.keys(TOOL).length===21,'every tool has an animation')}
+
+setStatus('');go({name:'home'});
+</script>
+</body>
+</html>
