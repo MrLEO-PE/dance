@@ -300,9 +300,9 @@ store.importRoster=async rows=>{const cls=[...new Set(rows.map(r=>r.class_name))
 // one sheet: rows of cells. Accepts "Class | Name" (or First name + Last name) columns, or a sheet per class with only names.
 function parseRows(rows,sheet){const out=[];rows=rows.map(r=>r.map(v=>String(v??'').trim())).filter(r=>r.some(Boolean));if(!rows.length)return out;
   const isH=v=>v.length<26&&/^(student|pupil|first|last|given|family|forename|surname|name)/i.test(v),hi=rows.slice(0,12).findIndex(r=>r.some(isH));
-  // class: a Class/Set column, else the title above the header ("8MS/Pe8 - Set List ..."), else the sheet name
+  // class: a Class/Set/Form column (8M, 8S...), else the title above the header ("8MS/Pe8 - Set List ..."), else the sheet name
   const h=hi>=0?rows[hi].map(v=>v.toLowerCase()):[],title=(rows.slice(0,Math.max(hi,0)).flat().find(Boolean)||'').split(/\s+-\s+/)[0];
-  let ci=h.findIndex(v=>/^(class|set)\b/.test(v)),fi=h.findIndex(v=>/first|given|forename/.test(v)),li=h.findIndex(v=>/last|surname|family/.test(v)),
+  let ci=h.findIndex(v=>/^(class|set|form)\b/.test(v)),fi=h.findIndex(v=>/first|given|forename/.test(v)),li=h.findIndex(v=>/last|surname|family/.test(v)),
     ni=fi>=0?fi:h.findIndex(v=>/name|student|pupil/.test(v)&&!/last|surname|family|class/.test(v)),body=rows.slice(hi+1);
   if(hi<0){const w=Math.max(...rows.map(r=>r.length));ci=w>1?0:-1;ni=w>1?1:0;li=-1;body=rows}
   if(ni<0)return out;
@@ -340,10 +340,11 @@ function stageInner(g){let s='<path class="grid" d="M50 0V100M0 50H100"/>';
   return s}
 const stageSvg=(g,live)=>`<svg class="stage${live?' live':''}" viewBox="0 0 100 100" role="img" aria-label="Stage seen from above with each dancer's pathway">${stageInner(g)}</svg>`;
 
+const yr=n=>(String(n).match(/^\d+/)||[''])[0]; // 8M, 8S -> Year 8
 function home(){const by={},st={};groups.forEach(g=>(by[g.class_name]=by[g.class_name]||[]).push(g));roster.forEach(r=>{st[r.class_name]=(st[r.class_name]||0)+1;by[r.class_name]=by[r.class_name]||[]});
   return`<section class="hero"><h2>Build your choreography, together.</h2><p>Pick your class, open your group and plan your dance. Every group can see every other group.</p></section>
-  <h3 class="sec">Classes</h3>
-  <div class="classes">${Object.keys(by).sort().map(n=>`<button class="classbtn" data-cls="${esc(n)}"><b>${esc(n)}</b><span>${st[n]?st[n]+' students, ':''}${by[n].length} group${by[n].length===1?'':'s'}</span></button>`).join('')||'<p class="mute">No class yet. Add the first one below.</p>'}</div>
+  ${Object.keys(by).length?'':'<h3 class="sec">Classes</h3><p class="mute">No class yet. Import your lists below or add one.</p>'}
+  ${[...new Set(Object.keys(by).map(yr))].sort((a,b)=>a-b||(a>b?1:-1)).map(y=>`<h3 class="sec">${y?'Year '+esc(y):'Classes'}</h3><div class="classes">${Object.keys(by).filter(n=>yr(n)===y).sort().map(n=>`<button class="classbtn" data-cls="${esc(n)}"><b>${esc(n)}</b><span>${st[n]?st[n]+' students, ':''}${by[n].length} group${by[n].length===1?'':'s'}</span></button>`).join('')}</div>`).join('')}
   <form class="inline" data-form="cls"><label>New class<input name="v" maxlength="12" placeholder="e.g. 9C" required autocomplete="off"></label><button class="btn">Add class</button></form>
   <h3 class="sec">Teacher</h3>
   <label class="btn ghost filebtn">Import classes (Excel)<input type="file" accept=".xlsx,.xls,.csv" data-import hidden></label>
