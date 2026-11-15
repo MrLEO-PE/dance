@@ -291,6 +291,8 @@ function norm(g){const d=g.data&&typeof g.data==='object'?g.data:{},str=(v,n)=>S
 
 const RREST=SUPABASE_URL+'/rest/v1/dance_roster';
 const rlocal={get(){try{return JSON.parse(localStorage.getItem('dance_roster'))||[]}catch{return[]}},set(r){try{localStorage.setItem('dance_roster',JSON.stringify(r))}catch{}}};
+store.removeClass=async c=>{if(remote){const q='?class_name=eq.'+encodeURIComponent(c);await call(REST+q,{method:'DELETE'});await call(RREST+q,{method:'DELETE'})}
+  else{local.set(local.get().filter(g=>g.class_name!==c));rlocal.set(rlocal.get().filter(r=>r.class_name!==c))}};
 store.roster=async()=>remote?call(RREST+'?select=class_name,name&order=name'):rlocal.get();
 // importing a class replaces its whole list, so the teacher fixes typos by importing again
 store.importRoster=async rows=>{const cls=[...new Set(rows.map(r=>r.class_name))];
@@ -317,6 +319,16 @@ const getMe=c=>meAll()[c]||'';
 const setMe=(c,n)=>{const m=meAll();if(n)m[c]=n;else delete m[c];try{localStorage.setItem('dance_me',JSON.stringify(m))}catch{}};
 
 /* ---------- state ---------- */
+// shortcut: the teacher code is checked in the browser (hash only), so it keeps students out of the buttons, not out of the database; upgrade to Supabase Auth if that matters.
+const ADMIN_HASH='2b3fc66d08d1a9eca4a0e56ba2498e62d65103ec7b6f05f81f07fc2091b5713d';
+const sha=async t=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(t)))].map(b=>b.toString(16).padStart(2,'0')).join('');
+const b64=b=>btoa(String.fromCharCode(...new Uint8Array(b))),unb64=t=>Uint8Array.from(atob(t),c=>c.charCodeAt(0));
+const rnd=n=>crypto.getRandomValues(new Uint8Array(n)),hasBio=()=>!!window.PublicKeyCredential&&!!localStorage.getItem('dance_cred');
+let admin=false,unlockOpen=false;
+async function bio(reg){ // fingerprint / face through the phone or laptop's own lock screen (WebAuthn, checked on this device only)
+  try{if(reg){const c=await navigator.credentials.create({publicKey:{challenge:rnd(32),rp:{name:'Dance Studio'},user:{id:rnd(16),name:'teacher',displayName:'Teacher'},pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],authenticatorSelection:{authenticatorAttachment:'platform',userVerification:'required'},timeout:60000}});localStorage.setItem('dance_cred',b64(c.rawId));setStatus('Fingerprint / face saved on this device','ok')}
+  else{await navigator.credentials.get({publicKey:{challenge:rnd(32),allowCredentials:[{type:'public-key',id:unb64(localStorage.getItem('dance_cred'))}],userVerification:'required',timeout:60000}});admin=true}
+  return true}catch(e){setStatus('Fingerprint / face did not work. Use the code.','bad');return false}}
 let pending=null,roster=[],groups=[],view={name:'home'},cur=0,dirtyG=null,saveTimer=0,drawing=null;
 const app=$('#app'),statusEl=$('#status'),titleEl=$('#title'),backEl=$('#back');
 const group=()=>groups.find(g=>g.id===view.id);
@@ -353,6 +365,9 @@ function home(){const by={},st={};groups.forEach(g=>(by[g.class_name]=by[g.class
   ${[...new Set(Object.keys(by).map(yr))].sort((a,b)=>a-b||(a>b?1:-1)).map(y=>`<h3 class="sec">${y?'Year '+esc(y):'Classes'}</h3><div class="classes">${Object.keys(by).filter(n=>yr(n)===y).sort().map(n=>`<button class="classbtn" data-cls="${esc(n)}"><b>${esc(n)}</b><span>${st[n]?st[n]+' students, ':''}${by[n].length} group${by[n].length===1?'':'s'}</span></button>`).join('')}</div>`).join('')}
   <form class="inline" data-form="cls"><label>New class<input name="v" maxlength="12" placeholder="e.g. 9C" required autocomplete="off"></label><button class="btn">Add class</button></form>
   <h3 class="sec">Teacher</h3>
+  ${admin?`<p>Teacher tools unlocked. Open a class to delete it. <button class="link" data-lock>Lock</button>${window.PublicKeyCredential&&!localStorage.getItem('dance_cred')?' <button class="link" data-biosave>Use fingerprint / face on this device</button>':''}</p>`
+   :unlockOpen?`<form class="inline" data-form="unlock"><label>Teacher code<input name="v" type="password" required autocomplete="off"></label><button class="btn">Unlock</button>${hasBio()?'<button type="button" class="btn ghost" data-bio>Fingerprint / face</button>':''}</form>`
+   :'<button class="btn ghost" data-unlockopen>Unlock teacher tools</button>'}
   <label class="btn ghost filebtn">Import classes (Excel)<input type="file" accept=".xlsx,.xls,.csv" data-import hidden></label>
   <p class="mute">Use your school list as it is (Surname and Forename columns). If it has a Form or Class column, that is the class. If it only has a Year Group, you type the class letter after choosing the file. Importing a class again replaces its list.</p>
   <button class="libbtn" data-lib>Composition tools library<span>Watch the ${Object.keys(TOOL).length} animated tools</span></button>`}
@@ -366,14 +381,15 @@ function card(g,act){const d=g.data,ts=Object.keys(d.tools),link=safeUrl(d.link)
   <dt>Tools<span class="pill ${ts.length>=4?'ok':''}">${ts.length}/4</span></dt><dd>${ts.map(k=>`<span class="tchip">${TOOL[k].name}${d.tools[k]?`<small>${esc(d.tools[k])}</small>`:''}</span>`).join('')||none}</dd>
   <dt>Ready</dt><dd>${d.ready.filter(Boolean).length}/${READY.length} checks</dd></dl>
   ${act||''}<button class="btn wide${act?' ghost':''}" data-open="${esc(g.id)}">Open group</button></article>`}
+const delBtn=(gs,names)=>admin?`<button class="btn danger" data-delcls>Delete class ${esc(view.cls)} (${gs.length} group${gs.length===1?'':'s'}, ${names.length} students)</button>`:'';
 function classView(){const gs=groups.filter(g=>g.class_name===view.cls),names=roster.filter(r=>r.class_name===view.cls).map(r=>r.name),me=getMe(view.cls);
-  if(names.length&&!names.includes(me))return`<h3 class="sec">Who are you?</h3><div class="names">${names.map(n=>`<button class="namebtn" data-me="${esc(n)}">${esc(n)}</button>`).join('')}</div>`;
+  if(names.length&&!names.includes(me))return`<h3 class="sec">Who are you?</h3><div class="names">${names.map(n=>`<button class="namebtn" data-me="${esc(n)}">${esc(n)}</button>`).join('')}</div>${delBtn(gs,names)}`;
   const mine=me&&gs.find(g=>g.data.dancers.includes(me));
   const act=g=>!me||mine?'':g.data.dancers.some(d=>!d)?`<button class="btn wide" data-join="${esc(g.id)}">Join this group</button>`:'<p class="full">Group full</p>';
   return(me?`<p>You are <b>${esc(me)}</b>${mine?' in <b>'+esc(mine.group_name)+'</b>':''}. <button class="link" data-me="">Not you?</button></p>`:'')+
   `<p class="mute">${gs.length?gs.length+' group'+(gs.length>1?'s':'')+'. The stage shows each group\'s use of space.':'No group yet. Create the first one.'}</p>
   <div class="cards">${gs.map(g=>card(g,act(g))).join('')}</div>
-  ${mine?'':`<form class="inline" data-form="grp"><label>New group<input name="v" maxlength="40" placeholder="Group name" required autocomplete="off"></label><button class="btn">Create group</button></form>`}`}
+  ${mine?'':`<form class="inline" data-form="grp"><label>New group<input name="v" maxlength="40" placeholder="Group name" required autocomplete="off"></label><button class="btn">Create group</button></form>`}${delBtn(gs,names)}`}
 
 const toolCard=(id,g)=>{const t=TOOL[id],on=g&&id in g.data.tools;
   return`<article class="tool${on?' on':''}"><button class="anim" aria-label="Play or pause the ${t.name} animation"><canvas data-anim="${id}" width="${W*2}" height="${HT*2}"></canvas></button><h4>${t.name}</h4><p>${t.def}</p>
@@ -416,6 +432,13 @@ app.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)
   if('lib'in ds)return go({name:'library'});
   if(ds.open)return go({name:'group',id:ds.open,cls:view.cls,tab:0});
   if('cancelimp'in ds){pending=null;return render()}
+  if('unlockopen'in ds){unlockOpen=true;return render()}
+  if('lock'in ds){admin=unlockOpen=false;return render()}
+  if('biosave'in ds){await bio(true);return render()}
+  if('bio'in ds){if(await bio(false)){unlockOpen=false;render()}return}
+  if('delcls'in ds){if(!admin)return;
+    if(!b._armed){b._armed=1;b.textContent='Tap again to delete for everyone';return setTimeout(()=>{b._armed=0;render(true)},4000)}
+    try{await store.removeClass(view.cls);setMe(view.cls,'');await go({name:'home'});setStatus('Class deleted','ok')}catch(err){setStatus('Could not delete. Check the wifi.','bad')}return}
   if(ds.tab){view.tab=+ds.tab;return render()}
   if('me'in ds){setMe(view.cls,ds.me);return render()}
   if(ds.join){const j=groups.find(x=>x.id===ds.join),me=getMe(view.cls),i=j?j.data.dancers.findIndex(d=>!d):-1;if(i<0)return;
@@ -435,6 +458,7 @@ app.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)
 });
 async function doImport(rows){setStatus('Importing…');await store.importRoster(rows);const cls=[...new Set(rows.map(r=>r.class_name))];pending=null;await go({name:'home'});setStatus(`Imported ${rows.length} students in ${cls.join(', ')}`,'ok')}
 app.addEventListener('submit',async e=>{e.preventDefault();const f=e.target,v=f.v.value.trim();if(!v)return;
+  if(f.dataset.form==='unlock'){if(await sha(v)===ADMIN_HASH){admin=true;unlockOpen=false;return render()}return setStatus('Wrong code','bad')}
   if(f.dataset.form==='pend'){const k=pending.rows.find(r=>isBare(r.class_name)).class_name,V=v.toUpperCase().replace(/[",()]/g,'').slice(0,12),cls=/^\d/.test(V)?V:(k+V).slice(0,12);
     pending.rows.forEach(r=>{if(r.class_name===k)r.class_name=cls});
     if(pending.rows.some(r=>isBare(r.class_name)))return render();
