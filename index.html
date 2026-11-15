@@ -83,7 +83,7 @@ dd small,.tchip small{display:block;color:var(--mute);font-size:13px;font-weight
 .pane{max-width:760px}
 .pane.toolspane{max-width:none}
 .dancer{display:flex;align-items:center;gap:10px}
-.dancer input{margin:0}
+.dancer input{margin:0}.dancer b{flex:1;overflow-wrap:anywhere}.small{padding:8px 12px;font-size:14px}.members{display:grid;gap:8px;margin-bottom:8px}
 .dot{flex:none;width:34px;height:34px;border-radius:50%;background:var(--c);color:#000;display:grid;place-items:center;font-weight:800}
 .count{position:sticky;top:118px;z-index:3;background:var(--ink);color:#fff;border-radius:10px;padding:8px 12px;margin:0 0 4px}
 .count.ok{background:var(--ok)}
@@ -285,7 +285,7 @@ const store={
 function norm(g){const d=g.data&&typeof g.data==='object'?g.data:{},str=(v,n)=>String(v??'').slice(0,n);
   return{id:String(g.id),class_name:str(g.class_name,12),group_name:str(g.group_name,40),updated_at:g.updated_at,data:{
     dancers:Array.from({length:6},(_,i)=>str(d.dancers&&d.dancers[i],30)),
-    topic:str(d.topic,80),story:str(d.story,300),music:str(d.music,80),artist:str(d.artist,80),link:str(d.link,300),
+    invites:(Array.isArray(d.invites)?d.invites:[]).slice(0,6).map(v=>str(v,30)).filter(Boolean),topic:str(d.topic,80),story:str(d.story,300),music:str(d.music,80),artist:str(d.artist,80),link:str(d.link,300),
     tools:Object.fromEntries(Object.entries(d.tools||{}).filter(([k])=>TOOL[k]).map(([k,v])=>[k,str(v,80)])),
     paths:Object.fromEntries(Object.entries(d.paths||{}).filter(([k,v])=>k>=0&&k<6&&Array.isArray(v)).map(([k,v])=>[k,v.slice(0,400).map(p=>[+p[0]||0,+p[1]||0])])),
     ready:READY.map((_,i)=>!!(d.ready&&d.ready[i]))}}}
@@ -382,14 +382,15 @@ function card(g,act){const d=g.data,ts=Object.keys(d.tools),link=safeUrl(d.link)
   <dl><dt>Topic</dt><dd>${esc(d.topic)||none}${d.story?`<small>${esc(d.story)}</small>`:''}</dd>
   <dt>Music</dt><dd>${music||(link?'':none)} ${link?`<a href="${esc(link)}" target="_blank" rel="noopener">Listen</a>`:''}</dd>
   <dt>Tools<span class="pill ${ts.length>=4?'ok':''}">${ts.length}/4</span></dt><dd>${ts.map(k=>`<span class="tchip">${TOOL[k].name}${d.tools[k]?`<small>${esc(d.tools[k])}</small>`:''}</span>`).join('')||none}</dd>
-  <dt>Ready</dt><dd>${d.ready.filter(Boolean).length}/${READY.length} checks</dd></dl>
+  ${d.invites.length?`<dt>Invited</dt><dd>${d.invites.map(esc).join(', ')}</dd>`:''}<dt>Ready</dt><dd>${d.ready.filter(Boolean).length}/${READY.length} checks</dd></dl>
   ${act||''}<button class="btn wide${act?' ghost':''}" data-open="${esc(g.id)}">Open group</button></article>`}
 const delBtn=(gs,names)=>admin?`<button class="btn danger" data-delcls>Delete class ${esc(view.cls)} (${gs.length} group${gs.length===1?'':'s'}, ${names.length} students)</button>`:'';
 function classView(){const gs=groups.filter(g=>g.class_name===view.cls),names=roster.filter(r=>r.class_name===view.cls).map(r=>r.name),me=getMe(view.cls);
   if(names.length&&!names.includes(me))return`<h3 class="sec">Who are you?</h3><div class="names">${names.map(n=>`<button class="namebtn" data-me="${esc(n)}">${esc(n)}</button>`).join('')}</div>${delBtn(gs,names)}`;
   const mine=me&&gs.find(g=>g.data.dancers.includes(me));
-  const act=g=>!me||mine?'':g.data.dancers.some(d=>!d)?`<button class="btn wide" data-join="${esc(g.id)}">Join this group</button>`:'<p class="full">Group full</p>';
-  return(me?`<p>You are <b>${esc(me)}</b>${mine?' in <b>'+esc(mine.group_name)+'</b>':''}. <button class="link" data-me="">Not you?</button></p>`:'')+
+  const act=()=>'',invs=me&&!mine?gs.filter(x=>x.data.invites.includes(me)&&x.data.dancers.some(d=>!d)):[];
+  const invBlock=invs.length?`<h3 class="sec">Invitations</h3>${invs.map(x=>`<div class="card"><p><b>${esc(x.group_name)}</b> invited you to join. Dancers so far: ${x.data.dancers.filter(Boolean).map(esc).join(', ')||'none'}.</p><div class="row"><button class="btn" data-acc="${esc(x.id)}">Accept</button><button class="btn ghost" data-ref="${esc(x.id)}">Refuse</button></div></div>`).join('')}`:'';
+  return(me?`<p>You are <b>${esc(me)}</b>${mine?' in <b>'+esc(mine.group_name)+'</b>':''}. <button class="link" data-me="">Not you?</button></p>`:'')+invBlock+
   `<p class="mute">${gs.length?gs.length+' group'+(gs.length>1?'s':'')+'. The stage shows each group\'s use of space.':'No group yet. Create the first one.'}</p>
   <div class="cards">${gs.map(g=>card(g,act(g))).join('')}</div>
   ${mine?'':`<form class="inline" data-form="grp"><label>New group<input name="v" maxlength="40" placeholder="Group name" required autocomplete="off"></label><button class="btn">Create group</button></form>`}${delBtn(gs,names)}`}
@@ -401,10 +402,15 @@ const countText=n=>n+' chosen. '+(n>=4?'Make sure each one is easy to see.':'Cho
 function toolsPane(g){const n=g?Object.keys(g.data.tools).length:0;
   return(g?`<p class="count${n>=4?' ok':''}" id="count">${countText(n)}</p>`:'')+CATS.map(([c,ts])=>`<h3 class="sec">${c}</h3><div class="toolgrid">${ts.map(([id])=>toolCard(id,g)).join('')}</div>`).join('')}
 
+function teamBlock(g){const ros=roster.filter(r=>r.class_name===g.class_name).map(r=>r.name);
+  if(!ros.length)return`<h3 class="sec">Dancers (6 max)</h3>`+g.data.dancers.map((n,i)=>`<label class="dancer"><span class="dot" style="--c:${COL[i]}">${i+1}</span><input data-d="${i}" maxlength="30" placeholder="Name" aria-label="Dancer ${i+1} name" value="${esc(n)}"></label>`).join('');
+  const taken=new Set(groups.filter(x=>x.class_name===g.class_name).flatMap(x=>x.data.dancers)),iv=g.data.invites,n=g.data.dancers.filter(Boolean).length,avail=ros.filter(r=>!taken.has(r)&&!iv.includes(r));
+  return`<h3 class="sec">Dancers (${n}/6)</h3><div class="members">${g.data.dancers.map((d,i)=>d?`<div class="dancer"><span class="dot" style="--c:${COL[i]}">${i+1}</span><b>${esc(d)}</b><button class="btn ghost small" data-rm="${i}">Remove</button></div>`:'').join('')||'<p class="mute">No dancer yet.</p>'}</div>
+  ${iv.length?`<h3 class="sec">Waiting for an answer</h3><div class="members">${iv.map(v=>`<div class="dancer"><b>${esc(v)}</b><button class="btn ghost small" data-uninv="${esc(v)}">Cancel</button></div>`).join('')}</div>`:''}
+  <h3 class="sec">Invite classmates</h3>${n+iv.length>=6?'<p class="mute">Group is full (6 max, invitations included).</p>':avail.length?`<p class="mute">They choose to accept or refuse.</p><div class="names">${avail.map(v=>`<button class="namebtn" data-inv="${esc(v)}">${esc(v)}</button>`).join('')}</div>`:'<p class="mute">Everyone in the class is already in a group or invited.</p>'}`}
 const field=(l,f,g,x='')=>`<label>${l}<input data-f="${f}" value="${esc(g.data[f])}" ${x}></label>`;
 const PANES=[
- g=>`<label>Group name<input data-top="group_name" maxlength="40" value="${esc(g.group_name)}"></label><h3 class="sec">Dancers (6 max)</h3>
-  ${g.data.dancers.map((n,i)=>`<label class="dancer"><span class="dot" style="--c:${COL[i]}">${i+1}</span><input data-d="${i}" maxlength="30" placeholder="Name" aria-label="Dancer ${i+1} first name" value="${esc(n)}"></label>`).join('')}
+ g=>`<label>Group name<input data-top="group_name" maxlength="40" value="${esc(g.group_name)}"></label>${teamBlock(g)}
   <button class="btn danger" data-del>Delete this group</button>`,
  g=>field('Topic of our dance','topic',g,'maxlength="80" placeholder="e.g. Storm, Friendship, Social media"')+
   `<label>The story or emotion we want to share<textarea data-f="story" maxlength="300">${esc(g.data.story)}</textarea></label><h3 class="sec">Music</h3>`+
@@ -446,10 +452,15 @@ app.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)
     try{await store.removeClass(view.cls);setMe(view.cls,'');await go({name:'home'});setStatus('Class deleted','ok')}catch(err){setStatus('Could not delete. Check the wifi.','bad')}return}
   if(ds.tab){view.tab=+ds.tab;return render()}
   if('me'in ds){setMe(view.cls,ds.me);return render()}
-  if(ds.join){const j=groups.find(x=>x.id===ds.join),me=getMe(view.cls),i=j?j.data.dancers.findIndex(d=>!d):-1;if(i<0)return;
-    j.data.dancers[i]=me;dirtyG=j;return go({name:'group',id:j.id,cls:view.cls,tab:0})}
+  if(ds.acc||ds.ref){const j=groups.find(x=>x.id===(ds.acc||ds.ref)),me=getMe(view.cls);if(!j||!me)return;
+    j.data.invites=j.data.invites.filter(v=>v!==me);
+    if(ds.acc){const i=j.data.dancers.findIndex(d=>!d);if(i<0)return setStatus('That group is full','bad');j.data.dancers[i]=me;dirtyG=j;return go({name:'group',id:j.id,cls:view.cls,tab:0})}
+    touch(j);return render(true)}
   if(b.classList.contains('anim')){const cv=b.firstElementChild;cv._still=!cv._still;cv._done=false;return}
   if(!g)return;
+  if('rm'in ds){g.data.dancers[+ds.rm]='';touch(g);return render(true)}
+  if(ds.inv){if(g.data.dancers.filter(Boolean).length+g.data.invites.length>=6)return;g.data.invites.push(ds.inv);touch(g);return render(true)}
+  if(ds.uninv){g.data.invites=g.data.invites.filter(v=>v!==ds.uninv);touch(g);return render(true)}
   if(ds.pick){const on=!(ds.pick in g.data.tools),card=b.closest('.tool'),n=Object.keys(g.data.tools).length+(on?1:-1);
     if(on)g.data.tools[ds.pick]=$('input',card).value;else delete g.data.tools[ds.pick];
     card.classList.toggle('on',on);b.setAttribute('aria-pressed',on);b.textContent=on?'Chosen ✓':'Choose';
