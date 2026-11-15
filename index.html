@@ -46,7 +46,8 @@ main{max-width:1080px;margin:0 auto;padding:16px 14px 60px}
 .hero p{color:#fffc;margin:10px 0 0;max-width:46ch}
 .sec{font-size:20px;margin:22px 0 10px}
 .classes{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
-.classbtn{background:var(--card);border:2px solid var(--ink);border-radius:14px;padding:14px;text-align:left}
+.classwrap{position:relative}.x{position:absolute;top:6px;right:6px;min-width:36px;height:36px;border:0;border-radius:10px;background:var(--hot);color:#fff;font-weight:800;padding:0 8px}
+.classbtn{width:100%;background:var(--card);border:2px solid var(--ink);border-radius:14px;padding:14px;text-align:left}
 .classbtn b{display:block;font:800 26px "Bricolage Grotesque",system-ui,sans-serif}
 .classbtn span{color:var(--mute);font-size:13px}
 .inline{display:flex;gap:8px;align-items:flex-end;margin:18px 0;max-width:460px}
@@ -362,10 +363,10 @@ function home(){const by={},st={};groups.forEach(g=>(by[g.class_name]=by[g.class
   return`<section class="hero"><h2>Build your choreography, together.</h2><p>Pick your class, open your group and plan your dance. Every group can see every other group.</p></section>
   ${pending?pendForm():''}
   ${Object.keys(by).length?'':'<h3 class="sec">Classes</h3><p class="mute">No class yet. Import your lists below or add one.</p>'}
-  ${[...new Set(Object.keys(by).map(yr))].sort((a,b)=>a-b||(a>b?1:-1)).map(y=>`<h3 class="sec">${y?'Year '+esc(y):'Classes'}</h3><div class="classes">${Object.keys(by).filter(n=>yr(n)===y).sort().map(n=>`<button class="classbtn" data-cls="${esc(n)}"><b>${esc(n)}</b><span>${st[n]?st[n]+' students, ':''}${by[n].length} group${by[n].length===1?'':'s'}</span></button>`).join('')}</div>`).join('')}
+  ${[...new Set(Object.keys(by).map(yr))].sort((a,b)=>a-b||(a>b?1:-1)).map(y=>`<h3 class="sec">${y?'Year '+esc(y):'Classes'}</h3><div class="classes">${Object.keys(by).filter(n=>yr(n)===y).sort().map(n=>`<div class="classwrap"><button class="classbtn" data-cls="${esc(n)}"><b>${esc(n)}</b><span>${st[n]?st[n]+' students, ':''}${by[n].length} group${by[n].length===1?'':'s'}</span></button>${admin?`<button class="x" data-delone="${esc(n)}" aria-label="Delete class ${esc(n)}">✕</button>`:''}</div>`).join('')}</div>`).join('')}
   <form class="inline" data-form="cls"><label>New class<input name="v" maxlength="12" placeholder="e.g. 9C" required autocomplete="off"></label><button class="btn">Add class</button></form>
   <h3 class="sec">Teacher</h3>
-  ${admin?'<p>Teacher tools unlocked. Open a class to delete it. <button class="link" data-lock>Lock</button></p>'
+  ${admin?'<p>Teacher tools unlocked. Tap ✕ on a class to delete it (twice). <button class="link" data-lock>Lock</button></p>'
    :hasBio()?'<button class="btn" data-bio>Unlock with fingerprint / face</button>'
    :!window.PublicKeyCredential?'<p class="mute">Fingerprint / face is not available on this device.</p>'
    :unlockOpen?'<form class="inline" data-form="unlock"><label>Setup code (first time on this device only)<input name="v" type="password" required autocomplete="off"></label><button class="btn">Set up fingerprint / face</button></form>'
@@ -437,6 +438,9 @@ app.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)
   if('unlockopen'in ds){unlockOpen=true;return render()}
   if('lock'in ds){admin=unlockOpen=false;return render()}
   if('bio'in ds){if(await bio(false)){unlockOpen=false;render()}return}
+  if(ds.delone){if(!admin)return;
+    if(!b._armed){b._armed=1;b.textContent='Delete?';return setTimeout(()=>{b._armed=0;b.textContent='✕'},4000)}
+    try{await store.removeClass(ds.delone);setMe(ds.delone,'');await go({name:'home'});setStatus('Class deleted','ok')}catch(err){setStatus('Could not delete. Check the wifi.','bad')}return}
   if('delcls'in ds){if(!admin)return;
     if(!b._armed){b._armed=1;b.textContent='Tap again to delete for everyone';return setTimeout(()=>{b._armed=0;render(true)},4000)}
     try{await store.removeClass(view.cls);setMe(view.cls,'');await go({name:'home'});setStatus('Class deleted','ok')}catch(err){setStatus('Could not delete. Check the wifi.','bad')}return}
